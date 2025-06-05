@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Sand Simulator</title>
+    </head>
+    <body>
+        <div style="text-align: center; margin: 50px;">
+            <button onclick="increaseSize()" style="width: 150px; height: 100px; font-size: 150%; margin: 10px;">Increase Size</button>
+            <button onclick="decreaseSize()" style="width: 150px; height: 100px; font-size: 150%; margin: 10px;">Decrease Size</button>
+            <br>
+            <button onclick="increaseCanvas()" style="width: 150px; height: 100px; font-size: 150%; margin: 10px;">Increase Canvas</button>
+            <button onclick="decreaseCanvas()" style="width: 150px; height: 100px; font-size: 150%; margin: 10px;">Decrease Canvas</button>
+            <br>
+            <button onclick="increaseDivisions()" style="width: 150px; height: 100px; font-size: 150%; margin: 10px;">Increase Divisions</button>
+            <button onclick="decreaseDivisions()" style="width: 150px; height: 100px; font-size: 150%; margin: 10px;">Decrease Divisions</button>
+            <br>
+            <button onclick="reset()" style="width: 150px; height: 100px; font-size: 150%; margin: 10px;">Reset</button>
+            <br>
+            <p id="size" style="font-size: 200%; padding: 10px">Size: 1</p>
+            <p id="canvasSize" style="font-size: 200%; padding: 10px">2000x2000</p>
+            <p id="divisions" style="font-size: 200%; padding: 10px">Divisions: 200 Total: 40000</p>
+        <canvas id="mycanv" width="750" height="750" 
+                style="border: 10px solid black; width: 2000px; height: 2000px; margin: 15px;"></canvas>
+
+            <script>
+                //Initialize canvas
+                const canvas = document.getElementById("mycanv");
+                const ctx = canvas.getContext("2d");
+                const width = canvas.width;
+                const height = canvas.height;
+
+                //Defines how many divisions there are (IMPORTANT)
+                let gridDiv = 200;
+                let cooldown = 0;
+                let size = 1;
+
+                //Defines and initializes the grid matrix to all 0 values (1 if block is in there)
+                class Grid {
+                    constructor(divisions) {
+                        this.div = divisions;
+                        //Defines and initializes the grid double array
+                        this.grid = [];
+                        for(let r = 0; r < this.div; r++) {
+                            this.grid.push(new Array(this.div).fill(null));
+                        }
+                        this.cooldown = 0;
+                    }
+
+                    //Adds sand to a location clicked
+                    addSand(xV, yV) {
+                        //X and Y represent blocks in the grid (0 being first)
+                        //Calculate Y = yCoord / (height / divisions)
+                        let x = this.gridCoords(xV, yV)[0];
+                        let y = this.gridCoords(xV, yV)[1];
+                        //Border control
+                        if(x < 0) x = 0;
+                        if(x >= this.div) x = this.div - 1;
+                        if(y < 0) y = 0;
+                        if(y >= this.div) y = this.div - 1;
+                        //If empty add a new sandcell at this location
+                        if(this.grid[y][x] === null) {
+                            if(y != 0) {
+                                if(this.grid[y - 1][x] != null) {
+                                    let boxHeight = (height / this.div);
+                                    let aboveBorder = this.grid[y - 1][x].getPos()[1] + boxHeight + 2;
+                                    if(aboveBorder >= (y * boxHeight)) return 0;
+                                }
+                            }
+                            this.grid[y][x] = new sandCell(xV, yV);
+                            return 1;
+                        }
+                        //FAILED
+                        return 0;
+                    }
+
+                    //Updates every grid starting from the bottom
+                    update() {
+                        //Adds sand if allowed
+                        if(this.cooldown > 0) this.cooldown--;
+                        else this.cooldown = 0;
+                        if(this.cooldown === 0 && mouseDown) {
+                            this.cooldown = 0;
+                            for(let r = (-1 * size) ; r < size; r++) {
+                                for(let c = (-1 * size); c < size; c++) {
+                                    let xV = mouseX - c*(width / this.div);
+                                    let yV = mouseY - r*(height / this.div);
+                                    if(xV < 0 || xV >= width) continue;
+                                    if(yV < 0 || yV >= height) continue;
+                                    this.addSand(xV, yV);
+                                }   
+                            }
+                            
+                        }
+                        //Loop through each row starting from bottom
+                        for(let r = this.div - 1; r >= 0; r--) {
+                            //Loop through each column left to right
+                            for(let c = 0; c < this.div; c++) {
+                                //If there is a sand block 
+                                if(this.grid[r][c] != null) {
+                                    //Get values of the sand block
+                                    let block = this.grid[r][c];
+                                    let x = block.getPos()[0];
+                                    let y = block.getPos()[1];
+                                    let speed = block.getSpeed();
+                                    let moving = block.getState();
+
+                                    if(this.grid[r][c].getSpeed() === 0) this.grid[r][c].setState(0);
+                                    else this.grid[r][c].setState(1);
+
+                                    //Check below availability as long as its not at the bottom
+                                    if(y < height && r != this.div - 1) {
+                                        //Sets equal to current grid block
+                                        let yBlock = this.gridCoords(x, y)[1];
+                                        //Sets equal to next position some grid blocks down
+                                        let nextYBlock = this.gridCoords(x, y + speed)[1];
+                                        if(nextYBlock >= this.div) nextYBlock = this.div - 1;
+
+                                        //If the block is stopped by another
+                                        let blocked = 0;
+
+                                        //Checks block directly under if boxes are intersecting
+                                        if(this.grid[r + 1][c] != null && 
+                                          (y + (height / this.div)) > this.grid[r + 1][c].getPos()[1]) {
+                                            blocked = 1;
+                                            block.setPos(x, this.grid[r + 1][c].getPos()[1] - (height / this.div));
+                                            block.setState(0);
+                                            block.setSpeed(0);
+                                        }
+                                        
+                                        //Checks all blocks between next block and where it will be next frame
+                                        for(let yVal = yBlock + 1; yVal <= nextYBlock; yVal++) {
+                                            if(yVal >= this.div) yVal = this.div - 1;
+                                            //If there is a block that is stationary -- stop current block
+                                            //if(this.grid[yVal][c] != null && this.grid[yVal][c].getState() == 0) {
+                                            if(this.grid[yVal][c] != null && this.grid[yVal][c].getPos()[1] >= yVal * (height/this.div)) {
+                                                blocked = 1;
+                                                let tempY = yVal - 1;
+                                                /* Might be unnecessary
+                                                //Finds a y value thats available
+                                                while(tempY >= 0 && this.grid[tempY][c] != null && this.grid[tempY][c] != block) {
+                                                    tempY--;
+                                                }
+                                                */
+                                                //Sets new position of current block to before blocking block
+                                                //block.setPos(x, tempY * (height / this.div));
+                                                tempY = this.grid[yVal][c].getPos()[1];
+                                                block.setPos(x, tempY - (height / this.div));
+                                                //Changes blocks state and sets speed to 0
+                                                if(this.grid[yVal][c].getState() == 0) { 
+                                                    block.setState(0);
+                                                    block.setSpeed(0);
+                                                }
+                                                else {}
+                                                if(blocked) break;
+                                            }
+                                        }
+                                        //If not blocked, update blocks position with speed
+                                        if(!blocked) {
+                                            block.setPos(x, y + speed);
+                                            let newX = this.gridCoords(x, y + speed)[0];
+                                            let newY = this.gridCoords(x, y + speed)[1];
+                                            if(newY >= this.div){ 
+                                                newY = this.div - 1;
+                                                block.setState(0);
+                                                block.setSpeed(0);
+                                            }
+                                            this.grid[r][c] = null;
+                                            this.grid[newY][newX] = block;
+                                            block.increaseSpeed();
+                                        }
+
+                                        //Check to see if it can fall again
+                                        let canFall = 0;
+                                        if(this.grid[r + 1][c] === null || this.grid[r + 1][c].getState() === 1) {
+                                            canFall = true;
+                                        }
+
+                                        if(canFall && block.getSpeed() === 0 && (r + 1) < this.div) {
+                                            block.setSpeed(.5);
+                                        }
+                                    }
+                                    //Block is at the bottom of the 
+                                    else {
+                                        //Prevents it from going through the bottom
+                                        const boxHeight = height / this.div;
+                                        if((y + boxHeight) >= height) block.setPos(x, height - boxHeight + 1);
+                                        block.setState(0);
+                                        block.setSpeed(0);
+                                    }
+                                
+                                    //Draws the block on the screen
+                                    const boxWidth = width / this.div;
+                                    const boxHeight = height / this.div;
+
+                                    let [gridX, gridY] = this.gridCoords(
+                                        block.getPos()[0],
+                                        block.getPos()[1]
+                                    );
+
+                                    ctx.beginPath();
+                                    ctx.fillStyle = "rgb(255, 255, 255)";
+                                    //ctx.fillRect(gridX * boxWidth + 1, gridY * boxHeight * 1, 
+                                    ctx.fillRect(gridX * boxWidth + 1, block.getPos()[1],
+                                    boxWidth - 2, boxHeight - 2);
+                                }
+                            }
+                        }
+                    }
+                
+                    //Returns the grid coordinates
+                    gridCoords(xV, yV) {
+                        let x = Math.floor(xV / (width / this.div));
+                        let y = Math.floor(yV / (height / this.div));
+                        return [x, y];
+                    }
+
+                    //Returns the real coordinates of a given grid block
+                    realCoords(xB, yB) {
+                        let x = xB * (width / this.div);
+                        let y = yB * (height / this.div);
+                        return [x, y];
+                    }
+
+                    //Sets everything to null
+                    reset() {
+                        for(let r = 0; r < this.div; r++) {
+                            for(let c = 0; c < this.div; c++) {
+                                this.grid[r][c] = null;
+                            }
+                        }
+                    }
+                }
+
+                //Class for sand
+                class sandCell {
+                    //X and Y represent its exact coordinates
+                    constructor(x, y) {
+                        this.x = x;
+                        this.y = y;
+                        this.speed = .5;
+                        this.moving = 0;
+                        this.maxSpeed = 3;
+                    }
+
+                    //Returns the position of the sand block
+                    getPos() {
+                        return [this.x, this.y];
+                    }
+                    
+                    //Returns the speed of the sand block
+                    getSpeed() {
+                        return this.speed;
+                    }
+
+                    //Returns the state of the sand block
+                    getState() {
+                        return this.moving;
+                    }
+
+                    //Sets position
+                    setPos(xV, yV) {
+                        this.x = xV;
+                        this.y = yV;
+                    }
+
+                    //Sets state
+                    setState(val) {
+                        this.moving = val;
+                    }
+
+                    //Increases speed accordingly
+                    increaseSpeed() {
+                        if(this.speed < this.maxSpeed) this.speed *= 1.05;
+                        if(this.speed >= this.maxSpeed) this.speed = this.maxSpeed;
+                    }
+
+                    //Sets the blocks speed
+                    setSpeed(val) {
+                        this.speed = val;
+                    }
+                }
+
+                //Loop
+                function update() {
+                    if(!paused) { 
+                        //Draw background
+                        ctx.drawImage(gridCanvas, 0, 0);
+                        grid.update();
+                    }
+
+                    requestAnimationFrame(update);
+                }
+
+                /////BACKGROUND IMAGE
+                const gridCanvas = document.createElement("canvas");
+                gridCanvas.width = width;
+                gridCanvas.height = height;
+                const gctx = gridCanvas.getContext("2d");
+                //Background
+                    gctx.fillStyle = "rgb(142, 125, 125)";
+                    gctx.fillRect(0, 0, width, height);
+
+                    //Grid drawing
+                    for(let i = 0; i < gridDiv; i++) {
+                        gctx.beginPath();
+                        gctx.lineWidth = 3;
+                        gctx.moveTo(width/gridDiv * i, 0);
+                        gctx.lineTo(width/gridDiv * i, height);
+                        gctx.moveTo(0, height/gridDiv * i);
+                        gctx.lineTo(width, height/gridDiv * i);
+                        gctx.stroke();
+                    }
+
+                function regenerateGridCanvas() {
+                    //Resize or keep
+                    gridCanvas.width  = width;
+                    gridCanvas.height = height;
+                    const gctx = gridCanvas.getContext("2d");
+                    
+                    //Fill background:
+                    gctx.fillStyle = "rgb(142, 125, 125)";
+                    gctx.fillRect(0, 0, width, height);
+
+                    //Draw grid
+                    for (let i = 0; i < gridDiv; i++) {
+                        gctx.beginPath();
+                        gctx.lineWidth = 3;
+                        gctx.moveTo((width  / gridDiv) * i, 0);
+                        gctx.lineTo((width  / gridDiv) * i, height);
+                        gctx.moveTo(0, (height / gridDiv) * i);
+                        gctx.lineTo(width, (height / gridDiv) * i);
+                        gctx.stroke();
+                    }
+                }
+                /////BACKGROUND IMAGE
+
+                
+                let paused = 0;
+                let mouseX = 0;
+                let mouseY = 0;
+                let mouseDown = 0;
+                canvas.addEventListener("mousemove", e => {
+                    //How big the canvas actually is
+                    const rect = canvas.getBoundingClientRect();
+                    //Computes scalar factors
+                    const scaleX = canvas.width  / rect.width; 
+                    const scaleY = canvas.height / rect.height;  
+
+                    //Map mouse back to correct position
+                    mouseX = (e.clientX - rect.left) * scaleX;
+                    mouseY = (e.clientY - rect.top ) * scaleY;
+                })
+                canvas.addEventListener("mousedown", e => {
+                    mouseDown = 1;
+                })
+                canvas.addEventListener("mouseup", e => {
+                    mouseDown = 0;
+                })
+                document.addEventListener("keydown", e => {
+                    if(e.key === 'p') {
+                        paused = !paused;
+                    }
+                })
+
+
+                let grid = new Grid(gridDiv);
+                update();
+
+                function increaseSize() {
+                    size++;
+                    let maxSize = 10;
+                    if(size > maxSize) size = maxSize;
+                    document.getElementById("size").innerHTML = "Size: " + size;
+                }
+                function decreaseSize() {
+                    size--;
+                    if(size <= 0) size = 1;
+                    document.getElementById("size").innerHTML = "Size: " + size;
+                }
+                function reset() {
+                    grid.reset();
+                    canvasW = 2000;
+                    canvasH = 2000;
+                    canvas.style.width = canvasW + "px";
+                    canvas.style.height = canvasH + "px";
+                    gridDiv = 200;
+                    grid = new Grid(gridDiv);
+                    regenerateGridCanvas();
+                    document.getElementById("canvasSize").innerHTML = canvasW + "x" + canvasH;
+                    document.getElementById("divisions").innerHTML = "Divisions: " + gridDiv;
+                }
+                let canvasW = 2000;
+                let canvasH = 2000;
+                function increaseCanvas() {
+                    canvasW += 100;
+                    canvasH += 100;
+                    canvas.style.width = canvasW + "px";
+                    canvas.style.height = canvasH + "px";
+                    document.getElementById("canvasSize").innerHTML = canvasW + "x" + canvasH;
+                }
+                function decreaseCanvas() {
+                    canvasW -= 100;
+                    canvasH -= 100;
+                    canvas.style.width = canvasW + "px";
+                    canvas.style.height = canvasH + "px";
+                    document.getElementById("canvasSize").innerHTML = canvasW + "x" + canvasH;
+                }
+
+                function increaseDivisions() {
+                    gridDiv += 10;
+                    document.getElementById("divisions").innerHTML = "Divisions: " + gridDiv + " Total: " + gridDiv*gridDiv;
+                    grid = new Grid(gridDiv);
+                    regenerateGridCanvas();
+                }
+                function decreaseDivisions() {
+                    gridDiv -= 10;
+                    document.getElementById("divisions").innerHTML = "Divisions: " + gridDiv + " Total: " + gridDiv*gridDiv;
+                    grid = new Grid(gridDiv);
+                    regenerateGridCanvas();
+                }
+            </script>
+        </div>
+
+    </body>
+</html>
